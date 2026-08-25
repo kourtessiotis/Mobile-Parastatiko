@@ -1,8 +1,10 @@
 package com.ntvelop.mobileparastatiko.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -45,6 +47,7 @@ fun TriangularTransferDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
                 Text(
@@ -54,7 +57,7 @@ fun TriangularTransferDialog(
                     color = NeonGreen
                 )
                 Text(
-                    text = "Ορισμός στοιχείων παράδοσης σε εγκατάσταση τρίτου",
+                    text = "Ορισμός στοιχείων παράδοσης σε εγκατάσταση τρίτου (ΑΑΔΕ)",
                     fontSize = 12.sp,
                     color = Color.Gray,
                     modifier = Modifier.padding(bottom = 16.dp)
@@ -63,7 +66,7 @@ fun TriangularTransferDialog(
                 OutlinedTextField(
                     value = vat,
                     onValueChange = { if (it.length <= 9) vat = it },
-                    label = { Text("ΑΦΜ Τρίτου Παραλήπτη") },
+                    label = { Text("ΑΦΜ Τρίτου Παραλήπτη (9 ψηφία)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
