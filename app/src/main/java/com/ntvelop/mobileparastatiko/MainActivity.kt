@@ -6,7 +6,6 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,8 +29,6 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.ntvelop.mobileparastatiko.api.DeliveryStatus
 import com.ntvelop.mobileparastatiko.api.GetDeliveryStatusResponse
-import com.ntvelop.mobileparastatiko.api.InvoicesDoc
-import com.ntvelop.mobileparastatiko.api.Invoice
 import com.ntvelop.mobileparastatiko.api.RequestedInvoicesDoc
 import com.ntvelop.mobileparastatiko.api.MyDataClient
 import com.ntvelop.mobileparastatiko.api.RegisterTransferRequest
@@ -44,6 +41,8 @@ import com.ntvelop.mobileparastatiko.api.QrUrlsWrapper
 import com.ntvelop.mobileparastatiko.api.CancelDeliveryNoteRequest
 import com.ntvelop.mobileparastatiko.api.SessionManager
 import com.ntvelop.mobileparastatiko.xml.MyDataXmlSerializer
+import com.ntvelop.mobileparastatiko.ui.DeliveryDetailsCard
+import com.ntvelop.mobileparastatiko.ui.PartialDeliveryDialog
 import com.ntvelop.mobileparastatiko.ui.scanner.QRScannerScreen
 import com.ntvelop.mobileparastatiko.ui.screens.LoginScreen
 import com.ntvelop.mobileparastatiko.ui.screens.SplashScreen
@@ -56,7 +55,6 @@ import retrofit2.Callback
 import retrofit2.Response
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,21 +86,22 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
     var currentStatus by remember { mutableStateOf(DeliveryStatus.Unknown) }
     var currentQrUrl by remember { mutableStateOf("") }
     var currentMark by remember { mutableLongStateOf(0L) }
+    var vehiclePlateNumber by remember { mutableStateOf("Ανευ Οχήματος") }
     var rawDebug by remember { mutableStateOf("") }
     val debugLog = remember { StringBuilder() }
-    
+
     var showScanner by remember { mutableStateOf(false) }
     var isIssuer by remember { mutableStateOf(false) }
-    
+
     var showRegisterDialog by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
+    var showPartialDeliveryDialog by remember { mutableStateOf(false) }
     var showRejectDialog by remember { mutableStateOf(false) }
     var showManualMarkDialog by remember { mutableStateOf(false) }
     var showDebugDialog by remember { mutableStateOf(false) }
     var showGroupQRDialog by remember { mutableStateOf(false) }
-    
-    val groupedQrUrls = remember { mutableStateListOf<String>() } // Storing URLs for Group QR
 
+    val groupedQrUrls = remember { mutableStateListOf<String>() }
     val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
 
     if (showScanner) {
@@ -111,19 +110,19 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
                 showScanner = false
                 val sanitizedUrl = sanitizeQrUrl(qrUrl)
                 currentQrUrl = sanitizedUrl
-                
+
                 val docId = extractHash(sanitizedUrl) ?: "global"
                 currentMark = sessionManager.getDocumentMark(docId)
-                
+
                 currentStatus = DeliveryStatus.Unknown
                 debugLog.setLength(0)
                 debugLog.append("Scanned. Start Recovery...\n")
 
                 val loggedInVat = sessionManager.getVat()?.trim() ?: ""
                 isIssuer = (sanitizedUrl.contains(loggedInVat) || android.net.Uri.decode(sanitizedUrl).contains(loggedInVat))
-                
+
                 statusMessage = "Ανάκτηση..."
-                fetchStatusAdaptiveWithFishing(sanitizedUrl, if(currentMark != 0L) currentMark else null, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { statusStr, mark ->
+                fetchStatusAdaptiveWithFishing(sanitizedUrl, if (currentMark != 0L) currentMark else null, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { statusStr, mark ->
                     currentStatus = DeliveryStatus.fromApiString(statusStr)
                     if (mark != null && mark != 0L) {
                         currentMark = mark
@@ -145,39 +144,70 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
             fontWeight = FontWeight.Bold
         )
 
-        Button(onClick = { showScanner = true }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = NeonGreen, contentColor = Color.Black)) {
+        Button(
+            onClick = { showScanner = true },
+            modifier = Modifier.fillMaxWidth().height(60.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = NeonGreen, contentColor = Color.Black)
+        ) {
             Text("ΣΑΡΩΣΗ QR", fontWeight = FontWeight.Bold)
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        Button(onClick = { navController.navigate("delivery") }, modifier = Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+        Button(
+            onClick = { navController.navigate("delivery") },
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+        ) {
             Text("ΕΚΔΟΣΗ ΨΗΦΙΑΚΟΥ ΔΕΛΤΙΟΥ (NEW DELIVERY NOTE)", fontWeight = FontWeight.Bold)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        
-        if (statusMessage.isNotEmpty() || currentQrUrl.isNotEmpty()) {
-            Text(text = "Current Mark: $currentMark", color = Color.Gray, fontSize = 12.sp)
-            Text(text = statusMessage, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+
+        if (statusMessage.isNotEmpty() || currentQrUrl.isNotEmpty() || currentMark != 0L) {
+            DeliveryDetailsCard(
+                mark = currentMark,
+                status = currentStatus,
+                vehiclePlate = vehiclePlateNumber,
+                issuerVat = if (isIssuer) (sessionManager.getVat() ?: "-") else "Εκδότης (ΑΑΔΕ)",
+                recipientVat = if (!isIssuer) (sessionManager.getVat() ?: "-") else "Παραλήπτης"
+            )
+
             Spacer(modifier = Modifier.height(12.dp))
+
+            Text(text = statusMessage, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Row {
-                Button(onClick = { 
-                    debugLog.setLength(0)
-                    fetchStatusAdaptiveWithFishing(currentQrUrl, if(currentMark != 0L) currentMark else null, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { s, m ->
-                        currentStatus = DeliveryStatus.fromApiString(s)
-                        if (m != null && m != 0L) {
-                             currentMark = m
-                             sessionManager.saveDocumentMark(extractHash(currentQrUrl) ?: "global", m)
+                Button(
+                    onClick = {
+                        debugLog.setLength(0)
+                        fetchStatusAdaptiveWithFishing(currentQrUrl, if (currentMark != 0L) currentMark else null, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { s, m ->
+                            currentStatus = DeliveryStatus.fromApiString(s)
+                            if (m != null && m != 0L) {
+                                currentMark = m
+                                sessionManager.saveDocumentMark(extractHash(currentQrUrl) ?: "global", m)
+                            }
+                            rawDebug = debugLog.toString()
+                            statusMessage = "✅ ${currentStatus.text}"
                         }
-                        rawDebug = debugLog.toString()
-                        statusMessage = "✅ ${currentStatus.text}"
-                    }
-                }, modifier = Modifier.weight(1f)) { Text("REFRESH") }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("REFRESH") }
+
                 Spacer(Modifier.width(8.dp))
-                Button(onClick = { showManualMarkDialog = true }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text("LINK MARK") }
+
+                Button(
+                    onClick = { showManualMarkDialog = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                ) { Text("LINK MARK") }
             }
-            TextButton(onClick = { showDebugDialog = true }) { Text("VIEW DEBUG LOG", color = NeonGreen) }
+
+            TextButton(onClick = { showDebugDialog = true }) {
+                Text("VIEW DEBUG LOG", color = NeonGreen)
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -189,30 +219,30 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
                     Spacer(modifier = Modifier.height(12.dp))
 
                     if (isIssuer) {
-                        // Issuer Actions
                         if (currentStatus == DeliveryStatus.Registered) {
-                             Text("ℹ️ Το παραστατικό έχει ήδη καταχωρηθεί στην ΑΑΔΕ.", color = NeonGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                             Spacer(Modifier.height(16.dp))
-                             ActionBtn("Ακύρωση Παραστατικού (Issuer)", containerColor = Color.Red.copy(alpha=0.6f)) {
-                                 executeCancelTransfer(currentQrUrl) { success, msg ->
-                                     statusMessage = msg ?: "Result: $success"
-                                     if (success) {
-                                         currentStatus = DeliveryStatus.Cancelled
-                                         statusMessage = "✅ Ακυρώθηκε επιτυχώς"
-                                     }
-                                 }
-                             }
+                            Text("ℹ️ Το παραστατικό έχει ήδη καταχωρηθεί στην ΑΑΔΕ.", color = NeonGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(16.dp))
+                            ActionBtn("Ακύρωση Παραστατικού (Issuer)", containerColor = Color.Red.copy(alpha = 0.6f)) {
+                                executeCancelTransfer(currentQrUrl) { success, msg ->
+                                    statusMessage = msg ?: "Result: $success"
+                                    if (success) {
+                                        currentStatus = DeliveryStatus.Cancelled
+                                        statusMessage = "✅ Ακυρώθηκε επιτυχώς"
+                                    }
+                                }
+                            }
                         } else if (currentStatus == DeliveryStatus.Unknown) {
-                             ActionBtn("Έναρξη Διακίνησης (Register)") { showRegisterDialog = true }
+                            ActionBtn("Έναρξη Διακίνησης (Register)") { showRegisterDialog = true }
                         } else if (currentStatus == DeliveryStatus.Cancelled) {
-                             Text("❌ Το παραστατικό έχει ακυρωθεί.", color = Color.Red, fontSize = 14.sp)
+                            Text("❌ Το παραστατικό έχει ακυρωθεί.", color = Color.Red, fontSize = 14.sp)
                         } else {
-                             Text("Κατάσταση: ${currentStatus.text}", color = NeonGreen)
+                            Text("Κατάσταση: ${currentStatus.text}", color = NeonGreen)
                         }
                     } else {
-                        // Recipient / Carrier Actions
                         if (currentStatus == DeliveryStatus.InTransit || currentStatus == DeliveryStatus.DeliveredByCarrier) {
-                            ActionBtn("Επιβεβαίωση Παράδοσης (Recipient)", containerColor = Color(0xFF2E7D32)) { showConfirmDialog = true }
+                            ActionBtn("Επιβεβαίωση Παράδοσης (Full)", containerColor = Color(0xFF2E7D32)) { showConfirmDialog = true }
+                            Spacer(Modifier.height(8.dp))
+                            ActionBtn("Καταγραφή Μερικής Παραλαβής (Partial)", containerColor = Color(0xFFE65100)) { showPartialDeliveryDialog = true }
                             Spacer(Modifier.height(8.dp))
                             ActionBtn("Απόρριψη Παραστατικού (Recipient)", containerColor = Color(0xFFD32F2F)) { showRejectDialog = true }
                         } else {
@@ -222,15 +252,14 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
                             }
                         }
                     }
-                    
-                    // Utility actions (Always show for Issuer)
+
                     if (isIssuer) {
                         Spacer(modifier = Modifier.height(16.dp))
                         ActionBtn("Προσθήκη σε Ομαδική Σάρωση") {
                             if (currentQrUrl.isNotEmpty() && !groupedQrUrls.contains(currentQrUrl)) groupedQrUrls.add(currentQrUrl)
                             statusMessage = "Added to Group (${groupedQrUrls.size} items)"
                         }
-                        
+
                         if (groupedQrUrls.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
                             ActionBtn("Έκδοση Ομαδικού QR (${groupedQrUrls.size})", containerColor = Color(0xFF673AB7)) { showGroupQRDialog = true }
@@ -239,9 +268,16 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
                 }
             }
         }
-        
+
         Spacer(modifier = Modifier.height(40.dp))
-        Button(onClick = { sessionManager.logout(); navController.navigate("login") { popUpTo("main") { inclusive = true } } }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha=0.1f), contentColor = Color.Red), modifier = Modifier.fillMaxWidth()) { Text("Αποσύνδεση") }
+        Button(
+            onClick = {
+                sessionManager.logout()
+                navController.navigate("login") { popUpTo("main") { inclusive = true } }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.1f), contentColor = Color.Red),
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Αποσύνδεση") }
     }
 
     if (showDebugDialog) {
@@ -274,6 +310,7 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
     if (showRegisterDialog) {
         RegisterTransferDialog(onDismiss = { showRegisterDialog = false }) { v, t ->
             showRegisterDialog = false
+            vehiclePlateNumber = v.ifBlank { "Ανευ Οχήματος" }
             statusMessage = "Registering..."
             executeRegisterTransfer(currentQrUrl, v, t, { rawDebug = it }) { success, msg, m ->
                 if (success) {
@@ -282,7 +319,7 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
                         currentMark = finalMark
                         sessionManager.saveDocumentMark(extractHash(currentQrUrl) ?: "global", finalMark)
                     }
-                    fetchStatusAdaptiveWithFishing(currentQrUrl, finalMark, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { s, _ -> 
+                    fetchStatusAdaptiveWithFishing(currentQrUrl, finalMark, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { s, _ ->
                         currentStatus = DeliveryStatus.fromApiString(s)
                         statusMessage = "Registered Successfully!"
                     }
@@ -300,6 +337,23 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
                 if (success) fetchStatusAdaptiveWithFishing(currentQrUrl, currentMark, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { s, _ -> currentStatus = DeliveryStatus.fromApiString(s) }
             }
         }
+    }
+
+    if (showPartialDeliveryDialog) {
+        PartialDeliveryDialog(
+            onDismiss = { showPartialDeliveryDialog = false },
+            onConfirm = { items, withoutRecipient ->
+                showPartialDeliveryDialog = false
+                statusMessage = "Καταγράφηκαν ${items.size} διαφορές ειδών (Μερική Παραλαβή)"
+                executeConfirmDeliveryOutcome(currentQrUrl, "PARTIAL") { success, msg ->
+                    if (success) {
+                        fetchStatusAdaptiveWithFishing(currentQrUrl, currentMark, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { s, _ -> currentStatus = DeliveryStatus.fromApiString(s) }
+                    } else {
+                        statusMessage = "Error: $msg"
+                    }
+                }
+            }
+        )
     }
 
     if (showRejectDialog) {
@@ -346,9 +400,9 @@ private fun fetchStatusAdaptiveWithFishing(
 ) {
     val isSandbox = MyDataClient.sessionManager?.isSandboxMode() ?: true
     val mainHandler = Handler(Looper.getMainLooper())
-    
+
     when (attempt) {
-        1 -> { // 1. Attempt 1: Fishing (Fastest for success messages)
+        1 -> {
             onUI("🔍 Ταυτοποίηση (Fishing)...")
             Thread {
                 try {
@@ -356,25 +410,25 @@ private fun fetchStatusAdaptiveWithFishing(
                         .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                         .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                         .build()
-                        
+
                     val request = Request.Builder()
                         .url(qrUrl)
                         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                         .build()
-                        
+
                     val response = client.newCall(request).execute()
                     val html = response.body?.string() ?: ""
-                    
+
                     val loggedInVat = MyDataClient.sessionManager?.getVat()?.trim() ?: ""
                     val htmlContainsVat = html.contains(loggedInVat)
-                    
+
                     val markMatch = Regex("id=[\"']tMark[\"'][^>]*>\\s*(\\d+)").find(html)?.groupValues?.get(1) ?:
                                    Regex("value=[\"'](\\d{12,16})[\"']").find(html)?.groupValues?.get(1) ?:
                                    Regex("\\b(4\\d{14})\\b").find(html)?.groupValues?.get(1)
-                                   
+
                     val issuerVatMatch = Regex("id=[\"']pIssuerVat[\"'][^>]*>\\s*(\\d+)").find(html)?.groupValues?.get(1) ?:
                                         Regex("ΑΦΜ Εκδότη:\\s*(\\d+)").find(html)?.groupValues?.get(1)
-                                        
+
                     val isActuallyIssuer = (issuerVatMatch == loggedInVat) || 
                                           (qrUrl.contains(loggedInVat)) || 
                                           (htmlContainsVat && html.lowercase().contains("εκδότης"))
@@ -402,7 +456,7 @@ private fun fetchStatusAdaptiveWithFishing(
                     mainHandler.post {
                         val foundMark = markMatch?.toLongOrNull() ?: mark
                         if (isActuallyIssuer) onRoleUpdate(true)
-                        
+
                         if (bannerStatus != null) {
                             val res = DeliveryStatus.fromApiString(bannerStatus)
                             if (res != DeliveryStatus.Unknown) {
@@ -417,7 +471,7 @@ private fun fetchStatusAdaptiveWithFishing(
                 }
             }.start()
         }
-        2 -> { // 2. Attempt 2: by Mark (Direct API)
+        2 -> {
             if (mark == null) { fetchStatusAdaptiveWithFishing(qrUrl, null, 3, log, onUI, onRoleUpdate, onResult); return }
             onUI("Ανάκτηση (by Mark)...")
             MyDataClient.api.getDeliveryNoteStatus(mark = mark.toString()).enqueue(object : Callback<GetDeliveryStatusResponse> {
@@ -441,7 +495,7 @@ private fun fetchStatusAdaptiveWithFishing(
                 override fun onFailure(call: Call<GetDeliveryStatusResponse>, t: Throwable) { fetchStatusAdaptiveWithFishing(qrUrl, mark, 3, log, onUI, onRoleUpdate, onResult) }
             })
         }
-        3 -> { // 3. Attempt 3: by QR URL (Ph. 2 API)
+        3 -> {
             onUI("Ανάκτηση (by QR URL)...")
             MyDataClient.api.getDeliveryNoteStatus(qrUrl = qrUrl).enqueue(object : Callback<GetDeliveryStatusResponse> {
                 override fun onResponse(call: Call<GetDeliveryStatusResponse>, response: Response<GetDeliveryStatusResponse>) {
@@ -464,7 +518,7 @@ private fun fetchStatusAdaptiveWithFishing(
                 override fun onFailure(call: Call<GetDeliveryStatusResponse>, t: Throwable) { fetchStatusAdaptiveWithFishing(qrUrl, mark, 4, log, onUI, onRoleUpdate, onResult) }
             })
         }
-        4 -> { // 4. Attempt 4: Phase 1 RequestDocs (Final Body)
+        4 -> {
             if (mark == null) { onUI("⚠️ Δεν βρέθηκε στην AADE"); onResult("UNKNOWN", null); return }
             onUI("Αναζήτηση Παραστατικού (AADE)...")
             MyDataClient.api.requestDocs(mark = mark).enqueue(object : Callback<RequestedInvoicesDoc> {
@@ -561,7 +615,6 @@ private fun executeCancelTransfer(qrUrl: String, onResult: (Boolean, String?) ->
     })
 }
 
-
 private fun sanitizeQrUrl(url: String): String {
     if (url.contains("qrUrl=")) return android.net.Uri.decode(url.substringAfter("qrUrl=").substringBefore("&"))
     return url
@@ -570,20 +623,27 @@ private fun sanitizeQrUrl(url: String): String {
 @Composable
 fun ManualMarkDialog(onDismiss: () -> Unit, onConfirm: (Long) -> Unit) {
     var m by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Manual Mark Linking") }, text = { OutlinedTextField(value = m, onValueChange = { m = it }, label = { Text("Enter invoiceMark") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)) }, confirmButton = { Button(onClick = { m.toLongOrNull()?.let { onConfirm(it) } }) { Text("OK") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } })
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Manual Mark Linking") },
+        text = { OutlinedTextField(value = m, onValueChange = { m = it }, label = { Text("Enter invoiceMark") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)) },
+        confirmButton = { Button(onClick = { m.toLongOrNull()?.let { onConfirm(it) } }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } }
+    )
 }
 
 @Composable
 fun RegisterTransferDialog(onDismiss: () -> Unit, onConfirm: (String, Int) -> Unit) {
     var v by remember { mutableStateOf("") }
-    var t by remember { mutableIntStateOf(1) } // Default 1
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Register Transfer") }, 
-        text = { 
+    var t by remember { mutableIntStateOf(1) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Register Transfer") },
+        text = {
             Column {
                 OutlinedTextField(value = v, onValueChange = { v = it }, label = { Text("Vehicle Plate No") })
                 Spacer(Modifier.height(8.dp))
                 Text("Transport Type: $t")
-                // Simplified type selector
                 Row {
                     Button(onClick = { t = 1 }) { Text("1") }
                     Spacer(Modifier.width(4.dp))
@@ -592,16 +652,19 @@ fun RegisterTransferDialog(onDismiss: () -> Unit, onConfirm: (String, Int) -> Un
                     Button(onClick = { t = 7 }) { Text("7") }
                 }
             }
-        }, 
-        confirmButton = { Button(onClick = { onConfirm(v, t) }) { Text("START") } }, 
-        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } })
+        },
+        confirmButton = { Button(onClick = { onConfirm(v, t) }) { Text("START") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } }
+    )
 }
 
 @Composable
 fun ConfirmOutcomeDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var outcome by remember { mutableStateOf("FULL") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Confirm Delivery") }, 
-        text = { 
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Confirm Delivery") },
+        text = {
             Column {
                 Row {
                     RadioButton(selected = outcome == "FULL", onClick = { outcome = "FULL" })
@@ -616,21 +679,30 @@ fun ConfirmOutcomeDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                     Text("NONE (Άρνηση Παραλαβής)")
                 }
             }
-        }, 
-        confirmButton = { Button(onClick = { onConfirm(outcome) }) { Text("CONFIRM") } }, 
-        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } })
+        },
+        confirmButton = { Button(onClick = { onConfirm(outcome) }) { Text("CONFIRM") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } }
+    )
 }
 
 @Composable
 fun RejectNoteDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var reason by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Reject Delivery Note") }, 
-        text = { OutlinedTextField(value = reason, onValueChange = { reason = it }, label = { Text("Rejection Reason") }) }, 
-        confirmButton = { Button(onClick = { onConfirm(reason) }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("REJECT") } }, 
-        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } })
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Reject Delivery Note") },
+        text = { OutlinedTextField(value = reason, onValueChange = { reason = it }, label = { Text("Rejection Reason") }) },
+        confirmButton = { Button(onClick = { onConfirm(reason) }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("REJECT") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } }
+    )
 }
 
 @Composable
 fun ActionBtn(text: String, containerColor: Color = NeonGreen, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = if (containerColor == NeonGreen) Color.Black else Color.White)) { Text(text) }
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(52.dp),
+        shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = if (containerColor == NeonGreen) Color.Black else Color.White)
+    ) { Text(text) }
 }
