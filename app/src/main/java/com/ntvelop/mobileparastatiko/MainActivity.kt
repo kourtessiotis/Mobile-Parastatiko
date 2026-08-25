@@ -43,6 +43,8 @@ import com.ntvelop.mobileparastatiko.api.SessionManager
 import com.ntvelop.mobileparastatiko.xml.MyDataXmlSerializer
 import com.ntvelop.mobileparastatiko.ui.DeliveryDetailsCard
 import com.ntvelop.mobileparastatiko.ui.PartialDeliveryDialog
+import com.ntvelop.mobileparastatiko.ui.TriangularTransferDialog
+import com.ntvelop.mobileparastatiko.ui.BatchScanListDialog
 import com.ntvelop.mobileparastatiko.ui.scanner.QRScannerScreen
 import com.ntvelop.mobileparastatiko.ui.screens.LoginScreen
 import com.ntvelop.mobileparastatiko.ui.screens.SplashScreen
@@ -94,12 +96,13 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
     var isIssuer by remember { mutableStateOf(false) }
 
     var showRegisterDialog by remember { mutableStateOf(false) }
+    var showTriangularDialog by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
     var showPartialDeliveryDialog by remember { mutableStateOf(false) }
     var showRejectDialog by remember { mutableStateOf(false) }
     var showManualMarkDialog by remember { mutableStateOf(false) }
     var showDebugDialog by remember { mutableStateOf(false) }
-    var showGroupQRDialog by remember { mutableStateOf(false) }
+    var showBatchScanListDialog by remember { mutableStateOf(false) }
 
     val groupedQrUrls = remember { mutableStateListOf<String>() }
     val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
@@ -233,6 +236,8 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
                             }
                         } else if (currentStatus == DeliveryStatus.Unknown) {
                             ActionBtn("Έναρξη Διακίνησης (Register)") { showRegisterDialog = true }
+                            Spacer(Modifier.height(8.dp))
+                            ActionBtn("Τριγωνική Διακίνηση / Τρίτος", containerColor = Color(0xFF00897B)) { showTriangularDialog = true }
                         } else if (currentStatus == DeliveryStatus.Cancelled) {
                             Text("❌ Το παραστατικό έχει ακυρωθεί.", color = Color.Red, fontSize = 14.sp)
                         } else {
@@ -257,12 +262,14 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
                         Spacer(modifier = Modifier.height(16.dp))
                         ActionBtn("Προσθήκη σε Ομαδική Σάρωση") {
                             if (currentQrUrl.isNotEmpty() && !groupedQrUrls.contains(currentQrUrl)) groupedQrUrls.add(currentQrUrl)
-                            statusMessage = "Added to Group (${groupedQrUrls.size} items)"
+                            statusMessage = "Προστέθηκε στην ομάδα (${groupedQrUrls.size} παραστατικά)"
                         }
 
                         if (groupedQrUrls.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
-                            ActionBtn("Έκδοση Ομαδικού QR (${groupedQrUrls.size})", containerColor = Color(0xFF673AB7)) { showGroupQRDialog = true }
+                            ActionBtn("Διαχείριση Ομαδικής Σάρωσης (${groupedQrUrls.size})", containerColor = Color(0xFF673AB7)) {
+                                showBatchScanListDialog = true
+                            }
                         }
                     }
                 }
@@ -328,6 +335,26 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
         }
     }
 
+    if (showTriangularDialog) {
+        TriangularTransferDialog(
+            onDismiss = { showTriangularDialog = false },
+            onConfirm = { data ->
+                showTriangularDialog = false
+                statusMessage = "Καταχώρηση Τριγωνικής (Παραλήπτης: ${data.thirdPartyVat})..."
+                executeRegisterTransfer(currentQrUrl, "TRIANGULAR", data.transportType, { rawDebug = it }) { success, msg, m ->
+                    if (success) {
+                        val finalMark = m ?: currentMark
+                        if (finalMark != 0L) {
+                            currentMark = finalMark
+                            sessionManager.saveDocumentMark(extractHash(currentQrUrl) ?: "global", finalMark)
+                        }
+                        statusMessage = "✅ Καταχωρήθηκε Τριγωνική Μεταφορά!"
+                    } else { statusMessage = msg ?: "Error" }
+                }
+            }
+        )
+    }
+
     if (showConfirmDialog) {
         ConfirmOutcomeDialog(onDismiss = { showConfirmDialog = false }) { outcome ->
             showConfirmDialog = false
@@ -356,6 +383,24 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
         )
     }
 
+    if (showBatchScanListDialog) {
+        BatchScanListDialog(
+            qrList = groupedQrUrls.toList(),
+            onDismiss = { showBatchScanListDialog = false },
+            onRemoveItem = { index -> groupedQrUrls.removeAt(index) },
+            onGenerateGroupQR = {
+                showBatchScanListDialog = false
+                executeGenerateGroupQRCode(groupedQrUrls.toList()) { success, msg, qrUrl ->
+                    if (success) {
+                        statusMessage = "Group QR Generated!"
+                        rawDebug = "New Group QR: $qrUrl"
+                        groupedQrUrls.clear()
+                    } else { statusMessage = msg ?: "Error" }
+                }
+            }
+        )
+    }
+
     if (showRejectDialog) {
         RejectNoteDialog(onDismiss = { showRejectDialog = false }) { reason ->
             showRejectDialog = false
@@ -365,27 +410,6 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
                 if (success) fetchStatusAdaptiveWithFishing(currentQrUrl, currentMark, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { s, _ -> currentStatus = DeliveryStatus.fromApiString(s) }
             }
         }
-    }
-
-    if (showGroupQRDialog) {
-        AlertDialog(
-            onDismissRequest = { showGroupQRDialog = false },
-            title = { Text("Generate Group QR") },
-            text = { Text("Are you sure you want to group ${groupedQrUrls.size} notes?") },
-            confirmButton = {
-                Button(onClick = {
-                    showGroupQRDialog = false
-                    executeGenerateGroupQRCode(groupedQrUrls.toList()) { success, msg, qrUrl ->
-                        if (success) {
-                            statusMessage = "Group QR Generated!"
-                            rawDebug = "New Group QR: $qrUrl"
-                            groupedQrUrls.clear()
-                        } else { statusMessage = msg ?: "Error" }
-                    }
-                }) { Text("YES") }
-            },
-            dismissButton = { TextButton(onClick = { showGroupQRDialog = false }) { Text("NO") } }
-        )
     }
 }
 
