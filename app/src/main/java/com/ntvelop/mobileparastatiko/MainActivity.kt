@@ -358,10 +358,14 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
     if (showConfirmDialog) {
         ConfirmOutcomeDialog(onDismiss = { showConfirmDialog = false }) { outcome ->
             showConfirmDialog = false
-            statusMessage = "Confirming Outcome..."
-            executeConfirmDeliveryOutcome(currentQrUrl, outcome) { success, msg ->
-                statusMessage = if (success) "Confirmed: $outcome" else "Error: $msg"
-                if (success) fetchStatusAdaptiveWithFishing(currentQrUrl, currentMark, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { s, _ -> currentStatus = DeliveryStatus.fromApiString(s) }
+            if (outcome == "PARTIAL") {
+                showPartialDeliveryDialog = true
+            } else {
+                statusMessage = "Confirming Outcome..."
+                executeConfirmDeliveryOutcome(currentQrUrl, outcome) { success, msg ->
+                    statusMessage = if (success) "Confirmed: $outcome" else "Error: $msg"
+                    if (success) fetchStatusAdaptiveWithFishing(currentQrUrl, currentMark, 1, debugLog, { statusMessage = it }, { isIssuer = it }) { s, _ -> currentStatus = DeliveryStatus.fromApiString(s) }
+                }
             }
         }
     }
