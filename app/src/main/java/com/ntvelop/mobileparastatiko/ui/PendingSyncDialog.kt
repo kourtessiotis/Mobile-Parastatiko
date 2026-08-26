@@ -25,7 +25,7 @@ import java.util.*
 
 data class PendingSyncItem(
     val id: String = UUID.randomUUID().toString(),
-    val actionType: String, // π.χ. "CONFIRM_DELIVERY", "REGISTER_TRANSFER"
+    val actionType: String, // REGISTER_TRANSFER, CONFIRM_DELIVERY, REJECT_NOTE, CANCEL_NOTE
     val docMark: Long,
     val timestamp: Long = System.currentTimeMillis()
 )
@@ -58,13 +58,13 @@ fun PendingSyncDialog(
                 ) {
                     Column {
                         Text(
-                            text = "Offline Ουρά Συγχρονισμού",
+                            text = "Offline Ουρά myDATA",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = NeonGreen
                         )
                         Text(
-                            text = "${pendingList.size} εκκρεμείς ενέργειες χωρίς σύνδεση",
+                            text = "${pendingList.size} εκκρεμείς ενέργειες προς αποστολή",
                             fontSize = 12.sp,
                             color = Color.LightGray
                         )
@@ -91,7 +91,7 @@ fun PendingSyncDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Όλα τα παραστατικά είναι συγχρονισμένα με την ΑΑΔΕ!",
+                            "Όλες οι διαβιβάσεις έχουν ολοκληρωθεί στην ΑΑΔΕ!",
                             color = Color.Gray,
                             fontSize = 13.sp
                         )
@@ -143,6 +143,13 @@ private fun PendingItemRow(
     onDelete: () -> Unit
 ) {
     val dateStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(item.timestamp))
+    val actionTitle = when (item.actionType) {
+        "REGISTER_TRANSFER" -> "Έναρξη Διακίνησης"
+        "CONFIRM_DELIVERY" -> "Επιβεβαίωση Παραλαβής"
+        "REJECT_NOTE" -> "Απόρριψη Παραστατικού"
+        "CANCEL_NOTE" -> "Ακύρωση Παραστατικού"
+        else -> item.actionType
+    }
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -157,13 +164,13 @@ private fun PendingItemRow(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = item.actionType,
+                    text = actionTitle,
                     color = NeonGreen,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp
                 )
                 Text(
-                    text = "MARK: ${item.docMark} • $dateStr",
+                    text = "MARK: ${if (item.docMark != 0L) item.docMark else "Pending"} • $dateStr",
                     color = Color.LightGray,
                     fontSize = 11.sp,
                     maxLines = 1,
