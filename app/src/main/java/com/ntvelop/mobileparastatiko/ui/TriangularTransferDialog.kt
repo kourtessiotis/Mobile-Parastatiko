@@ -14,11 +14,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.ntvelop.mobileparastatiko.api.MyDataValidator
 import com.ntvelop.mobileparastatiko.ui.theme.DarkSurface
 import com.ntvelop.mobileparastatiko.ui.theme.NeonGreen
 
 data class TriangularTransferData(
+    val entityType: Int = 4, // 4: Τελικός Παραλήπτης Αγαθών, 2: Ενδιάμεσος, 3: Μεταφορέας
     val thirdPartyVat: String,
+    val branch: Int = 0,
     val deliveryAddress: String,
     val deliveryPostalCode: String,
     val deliveryCity: String,
@@ -30,11 +33,17 @@ fun TriangularTransferDialog(
     onDismiss: () -> Unit,
     onConfirm: (TriangularTransferData) -> Unit
 ) {
+    var entityType by remember { mutableIntStateOf(4) }
     var vat by remember { mutableStateOf("") }
+    var branch by remember { mutableStateOf("0") }
     var address by remember { mutableStateOf("") }
     var postalCode by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
     var transportType by remember { mutableIntStateOf(1) }
+
+    val isVatValid = remember(vat) {
+        if (vat.length == 9) MyDataValidator.isValidGreekVat(vat) else false
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -51,26 +60,69 @@ fun TriangularTransferDialog(
                     .padding(20.dp)
             ) {
                 Text(
-                    text = "Τριγωνική Διακίνηση / Τρίτος",
+                    text = "Τριγωνική Διακίνηση / Συσχετιζόμενος Φορέας",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = NeonGreen
                 )
                 Text(
-                    text = "Ορισμός στοιχείων παράδοσης σε εγκατάσταση τρίτου (ΑΑΔΕ)",
+                    text = "Ορισμός εγκατάστασης παράδοσης τρίτου (myData EntityType)",
                     fontSize = 12.sp,
                     color = Color.Gray,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                OutlinedTextField(
-                    value = vat,
-                    onValueChange = { if (it.length <= 9) vat = it },
-                    label = { Text("ΑΦΜ Τρίτου Παραλήπτη (9 ψηφία)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                Text("Ρόλος Φορέα:", fontSize = 12.sp, color = Color.LightGray)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterChip(
+                        selected = entityType == 4,
+                        onClick = { entityType = 4 },
+                        label = { Text("4 - Παραλήπτης", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = entityType == 2,
+                        onClick = { entityType = 2 },
+                        label = { Text("2 - Ενδιάμεσος", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = entityType == 3,
+                        onClick = { entityType = 3 },
+                        label = { Text("3 - Μεταφορέας", fontSize = 11.sp) }
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = vat,
+                        onValueChange = { if (it.length <= 9) vat = it },
+                        label = { Text("ΑΦΜ Φορέα (9 ψηφία)") },
+                        isError = vat.length == 9 && !isVatValid,
+                        supportingText = {
+                            if (vat.length == 9 && !isVatValid) {
+                                Text("Μη έγκυρο ΑΦΜ (Modulo 11)", color = Color.Red, fontSize = 10.sp)
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(2f),
+                        singleLine = true
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedTextField(
+                        value = branch,
+                        onValueChange = { branch = it },
+                        label = { Text("Εγκατάσταση") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
 
                 Spacer(Modifier.height(8.dp))
 
@@ -104,7 +156,7 @@ fun TriangularTransferDialog(
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Text("Τύπος Μεταφοράς:", fontSize = 12.sp, color = Color.LightGray)
+                Text("Μέσο Μεταφοράς:", fontSize = 12.sp, color = Color.LightGray)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -142,7 +194,9 @@ fun TriangularTransferDialog(
                         onClick = {
                             onConfirm(
                                 TriangularTransferData(
+                                    entityType = entityType,
                                     thirdPartyVat = vat.trim(),
+                                    branch = branch.toIntOrNull() ?: 0,
                                     deliveryAddress = address.trim(),
                                     deliveryPostalCode = postalCode.trim(),
                                     deliveryCity = city.trim(),
@@ -150,7 +204,7 @@ fun TriangularTransferDialog(
                                 )
                             )
                         },
-                        enabled = vat.length == 9,
+                        enabled = isVatValid,
                         colors = ButtonDefaults.buttonColors(containerColor = NeonGreen, contentColor = Color.Black)
                     ) {
                         Text("ΑΠΟΣΤΟΛΗ", fontWeight = FontWeight.Bold)
