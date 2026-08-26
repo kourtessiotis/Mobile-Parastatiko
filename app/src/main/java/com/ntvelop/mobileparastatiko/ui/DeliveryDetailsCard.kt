@@ -1,12 +1,13 @@
 package com.ntvelop.mobileparastatiko.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -24,7 +25,10 @@ import com.ntvelop.mobileparastatiko.ui.theme.NeonGreen
 fun DeliveryDetailsCard(
     mark: Long,
     status: DeliveryStatus,
-    vehiclePlate: String = "Ανευ Οχήματος",
+    invoiceType: String = "9.3 (Δελτίο Αποστολής)",
+    movePurpose: String? = null,
+    issueDate: String = "-",
+    vehiclePlate: String = "Άνευ Οχήματος",
     issuerVat: String = "-",
     recipientVat: String = "-",
     modifier: Modifier = Modifier
@@ -42,9 +46,9 @@ fun DeliveryDetailsCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Αριθμός MARK", fontSize = 11.sp, color = Color.Gray)
+                    Text("Επίσημο MARK myDATA", fontSize = 11.sp, color = Color.Gray)
                     Text(
-                        text = if (mark != 0L) mark.toString() else "Αναμονή...",
+                        text = if (mark != 0L) mark.toString() else "Αναμονή καταχώρησης...",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -60,11 +64,19 @@ fun DeliveryDetailsCard(
             )
 
             // Info Grid
+            DetailRow(icon = Icons.Default.Info, label = "Τύπος Παραστατικού", value = invoiceType)
+            if (!movePurpose.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                DetailRow(icon = Icons.Default.ShoppingCart, label = "Σκοπός Διακίνησης", value = movePurpose)
+            }
+            Spacer(Modifier.height(8.dp))
+            DetailRow(icon = Icons.Default.DateRange, label = "Ημερομηνία Έκδοσης", value = issueDate)
+            Spacer(Modifier.height(8.dp))
             DetailRow(icon = Icons.Default.LocationOn, label = "Όχημα / Πινακίδα", value = vehiclePlate)
             Spacer(Modifier.height(8.dp))
             DetailRow(icon = Icons.Default.Person, label = "ΑΦΜ Εκδότη (Αποστολέας)", value = issuerVat)
             Spacer(Modifier.height(8.dp))
-            DetailRow(icon = Icons.Default.Info, label = "ΑΦΜ Λήπτη (Παραλήπτης)", value = recipientVat)
+            DetailRow(icon = Icons.Default.Person, label = "ΑΦΜ Λήπτη (Παραλήπτης)", value = recipientVat)
         }
     }
 }
@@ -88,7 +100,7 @@ private fun StatusBadge(status: DeliveryStatus) {
         Text(
             text = status.text,
             color = textColor,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
         )
@@ -101,6 +113,6 @@ private fun DetailRow(icon: ImageVector, label: String, value: String) {
         Icon(icon, contentDescription = null, tint = NeonGreen, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(8.dp))
         Text(label, fontSize = 12.sp, color = Color.LightGray, modifier = Modifier.weight(1f))
-        Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+        Text(value, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
     }
 }
