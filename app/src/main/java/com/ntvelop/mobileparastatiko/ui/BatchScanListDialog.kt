@@ -48,13 +48,13 @@ fun BatchScanListDialog(
                 ) {
                     Column {
                         Text(
-                            text = "Ομαδική Σάρωση",
+                            text = "Ομαδική Σάρωση (Group QR)",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = NeonGreen
                         )
                         Text(
-                            text = "Σύνολο: ${qrList.size} παραστατικά",
+                            text = "Σύνολο: ${qrList.size} παραστατικά προς ομαδοποίηση",
                             fontSize = 12.sp,
                             color = Color.LightGray
                         )
