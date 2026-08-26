@@ -11,6 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -48,6 +50,7 @@ import com.ntvelop.mobileparastatiko.ui.BatchScanListDialog
 import com.ntvelop.mobileparastatiko.ui.scanner.QRScannerScreen
 import com.ntvelop.mobileparastatiko.ui.screens.LoginScreen
 import com.ntvelop.mobileparastatiko.ui.screens.SplashScreen
+import com.ntvelop.mobileparastatiko.ui.screens.SettingsScreen
 import com.ntvelop.mobileparastatiko.ui.theme.DarkBg
 import com.ntvelop.mobileparastatiko.ui.theme.DarkSurface
 import com.ntvelop.mobileparastatiko.ui.theme.MobileParastatikoTheme
@@ -74,6 +77,7 @@ class MainActivity : ComponentActivity() {
                         composable("login") { LoginScreen { navController.navigate("main") { popUpTo("login") { inclusive = true } } } }
                         composable("main") { MainDashboardScreen(navController, sessionManager) }
                         composable("delivery") { com.ntvelop.mobileparastatiko.ui.screens.DeliveryNoteScreen(sessionManager) { navController.popBackStack() } }
+                        composable("settings") { SettingsScreen(sessionManager) { navController.popBackStack() } }
                     }
                 }
             }
@@ -139,13 +143,20 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
     }
 
     Column(modifier = Modifier.padding(24.dp).fillMaxSize().verticalScroll(rememberScrollState())) {
-        Text(
-            text = "Διαχείριση Ψηφιακού Δελτίου (v1.3.9e-FISH)",
-            modifier = Modifier.padding(bottom = 24.dp),
-            style = MaterialTheme.typography.headlineSmall,
-            color = NeonGreen,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Mobile-Parastatiko",
+                style = MaterialTheme.typography.headlineSmall,
+                color = NeonGreen,
+                fontWeight = FontWeight.Bold
+            )
+            IconButton(onClick = { navController.navigate("settings") }) {
+                Icon(Icons.Default.Settings, contentDescription = "Ρυθμίσεις", tint = NeonGreen)
+            }
+        }
 
         Button(
             onClick = { showScanner = true },
@@ -162,7 +173,7 @@ fun MainDashboardScreen(navController: NavController, sessionManager: SessionMan
             modifier = Modifier.fillMaxWidth().height(52.dp),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
-            Text("ΕΚΔΟΣΗ ΨΗΦΙΑΚΟΥ ΔΕΛΤΙΟΥ (NEW DELIVERY NOTE)", fontWeight = FontWeight.Bold)
+            Text("ΕΚΔΟΣΗ ΨΗΦΙΑΚΟΥ ΔΕΛΤΙΟΥ", fontWeight = FontWeight.Bold)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
