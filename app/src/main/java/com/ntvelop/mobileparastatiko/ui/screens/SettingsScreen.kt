@@ -170,12 +170,16 @@ fun SettingsScreen(
                         return@Button
                     }
 
+                    // ΕΔΩ ΗΤΑΝ ΤΟ ΛΑΘΟΣ - Διορθώθηκε για να ταιριάζει με τον SessionManager
                     sessionManager.saveCredentials(
-                        vat = vat.trim(),
                         username = aadeUserId.trim(),
-                        subscriptionKey = subscriptionKey.trim(),
-                        sandbox = isSandbox
+                        vat = vat.trim(),
+                        subKey = subscriptionKey.trim()
                     )
+                    
+                    // Το sandbox αποθηκεύεται με δική του μέθοδο
+                    sessionManager.setSandboxMode(isSandbox)
+                    
                     Toast.makeText(context, "Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!", Toast.LENGTH_SHORT).show()
                     onNavigateBack()
                 },
