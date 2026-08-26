@@ -1,7 +1,6 @@
 package com.ntvelop.mobileparastatiko.ui.screens
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -22,6 +21,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ntvelop.mobileparastatiko.api.*
+import com.ntvelop.mobileparastatiko.offline.OfflineQueueManager
 import com.ntvelop.mobileparastatiko.printer.EscPosPrinterService
 import com.ntvelop.mobileparastatiko.printer.PaperWidth
 import com.ntvelop.mobileparastatiko.ui.theme.DarkBg
@@ -39,6 +39,7 @@ data class DeliveryNoteItemRow(
     val description: String = "Εμπορεύματα / Αγαθά",
     val quantity: Double = 1.0,
     val netPrice: Double = 10.0,
+    val measurementUnit: Int = 1, // 1: Τεμάχια, 2: Κιλά, 3: Λίτρα, 4: Μέτρα
     val vatCategory: Int = 1 // 1: 24%, 2: 13%, 3: 6%, 7: 0%
 )
 
@@ -49,6 +50,7 @@ fun DeliveryNoteScreen(
     onNavigateBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val offlineQueue = remember { OfflineQueueManager(context) }
 
     var series by remember { mutableStateOf("A") }
     var aa by remember { mutableStateOf("101") }
@@ -56,6 +58,10 @@ fun DeliveryNoteScreen(
     var counterpartName by remember { mutableStateOf("ΕΤΑΙΡΕΙΑ ΠΑΡΑΛΗΠΤΗ Α.Ε.") }
     var vehicleNumber by remember { mutableStateOf("KHH1234") }
     var docType by remember { mutableStateOf("9.3") }
+
+    val isVatValid = remember(counterpartVat) {
+        if (counterpartVat.length == 9) MyDataValidator.isValidGreekVat(counterpartVat) else false
+    }
 
     // Σκοπός Διακίνησης ΑΑΔΕ
     var movePurpose by remember { mutableIntStateOf(1) }
@@ -78,7 +84,7 @@ fun DeliveryNoteScreen(
     // Λίστα Γραμμών Ειδών
     val items = remember {
         mutableStateListOf(
-            DeliveryNoteItemRow(description = "Εμπορεύματα", quantity = 10.0, netPrice = 15.00, vatCategory = 1)
+            DeliveryNoteItemRow(description = "Εμπορεύματα", quantity = 10.0, netPrice = 15.00, measurementUnit = 1, vatCategory = 1)
         )
     }
 
@@ -142,15 +148,24 @@ fun DeliveryNoteScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = counterpartVat,
-                                onValueChange = { counterpartVat = it },
+                                onValueChange = { if (it.length <= 9) counterpartVat = it },
                                 label = { Text("ΑΦΜ Λήπτη") },
-                                modifier = Modifier.weight(1f)
+                                isError = counterpartVat.length == 9 && !isVatValid,
+                                supportingText = {
+                                    if (counterpartVat.length == 9 && !isVatValid) {
+                                        Text("Μη έγκυρο ΑΦΜ (Modulo 11)", color = Color.Red, fontSize = 10.sp)
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
                             )
                             OutlinedTextField(
                                 value = vehicleNumber,
-                                onValueChange = { vehicleNumber = it },
+                                onValueChange = { vehicleNumber = it.uppercase() },
                                 label = { Text("Πινακίδα Οχήματος") },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
                             )
                         }
 
@@ -158,7 +173,8 @@ fun DeliveryNoteScreen(
                             value = counterpartName,
                             onValueChange = { counterpartName = it },
                             label = { Text("Επωνυμία Λήπτη") },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
                         )
                     }
                 }
@@ -313,6 +329,7 @@ fun DeliveryNoteScreen(
                                 lineNumber = idx + 1,
                                 itemDescr = itm.description,
                                 quantity = itm.quantity,
+                                measurementUnit = itm.measurementUnit,
                                 netValue = lineNet,
                                 vatCategory = itm.vatCategory,
                                 vatAmount = lineVat
@@ -371,7 +388,9 @@ fun DeliveryNoteScreen(
 
                             override fun onFailure(call: Call<ResponseDoc>, t: Throwable) {
                                 isSubmitting = false
-                                resultText = "Αποτυχία Σύνδεσης. Το παραστατικό αποθηκεύτηκε στην Offline Ουρά."
+                                offlineQueue.enqueueInvoice(invoice)
+                                resultText = "Αποτυχία Σύνδεσης. Το παραστατικό αποθηκεύτηκε στην Offline Ουρά (transmissionFailure = 3)."
+                                Toast.makeText(context, "Αποθηκεύτηκε στην Offline Ουρά!", Toast.LENGTH_LONG).show()
                             }
                         })
                     },
