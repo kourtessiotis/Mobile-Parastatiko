@@ -36,7 +36,7 @@ fun SettingsScreen(
     val context = LocalContext.current
 
     var vat by remember { mutableStateOf(sessionManager.getVat() ?: "") }
-    var aadeUserId by remember { mutableStateOf(sessionManager.getAadeUserId() ?: "") }
+    var aadeUserId by remember { mutableStateOf(sessionManager.getUsername() ?: "") }
     var subscriptionKey by remember { mutableStateOf(sessionManager.getSubscriptionKey() ?: "") }
     var isSandbox by remember { mutableStateOf(sessionManager.isSandboxMode()) }
 
@@ -172,8 +172,8 @@ fun SettingsScreen(
 
                     sessionManager.saveCredentials(
                         vat = vat.trim(),
-                        userId = aadeUserId.trim(),
-                        subKey = subscriptionKey.trim(),
+                        username = aadeUserId.trim(),
+                        subscriptionKey = subscriptionKey.trim(),
                         sandbox = isSandbox
                     )
                     Toast.makeText(context, "Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!", Toast.LENGTH_SHORT).show()
