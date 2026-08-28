@@ -162,7 +162,7 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // Κουμπί Αποθήκευσης
+            //Κουμπί Αποθήκευσης
             Button(
                 onClick = {
                     if (vat.isNotBlank() && !MyDataValidator.isValidGreekVat(vat)) {
